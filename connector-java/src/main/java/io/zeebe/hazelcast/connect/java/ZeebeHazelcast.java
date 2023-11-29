@@ -124,10 +124,9 @@ public class ZeebeHazelcast implements AutoCloseable {
 
         try {
             readManyRecords();
-        } catch (InvalidProtocolBufferException e) {
+        } catch (RecordParsingException e) {
             LOGGER.error("Failed to deserialize Protobuf message at sequence '{}'", sequence, e);
-
-            sequence += 1;
+            sequence += e.getReadCount();
 
         } catch (StaleSequenceException e) {
             // if the sequence is smaller than headSequence(). Because a Ringbuffer won't store all event
@@ -172,16 +171,20 @@ public class ZeebeHazelcast implements AutoCloseable {
         }
     }
 
-    private void readManyRecords() throws InvalidProtocolBufferException {
-        int maxCount = 100;
-        LOGGER.debug("Attempting to read {} records from sequence : {}", maxCount, sequence);
-        ReadResultSet<byte[]> result = ringbuffer.readManyAsync(sequence, 1, maxCount, null)
+    private void readManyRecords() throws RecordParsingException {
+        int batchSize = 100;
+        LOGGER.debug("Attempting to read {} records from sequence : {}", batchSize, sequence);
+        ReadResultSet<byte[]> result = ringbuffer.readManyAsync(sequence, 1, batchSize, null)
                 .toCompletableFuture().join();
         LOGGER.info("Read {} records from ring buffer", result.size());
-        for (byte[] item : result) {
-            final Schema.Record genericRecord;
-            genericRecord = Schema.Record.parseFrom(item);
-            handleRecord(genericRecord);
+        try {
+            for (byte[] item : result) {
+                final Schema.Record genericRecord;
+                genericRecord = Schema.Record.parseFrom(item);
+                handleRecord(genericRecord);
+            }
+        } catch (InvalidProtocolBufferException e) {
+            throw new RecordParsingException(result.size(), e);
         }
         sequence += result.size();
         postProcessListener.accept(sequence);
