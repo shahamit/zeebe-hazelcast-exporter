@@ -57,6 +57,8 @@ public class ZeebeHazelcast implements AutoCloseable {
 
     private long sequence;
 
+    private int hzBatchSize;
+
     private Future<?> future;
     private ExecutorService executorService;
 
@@ -65,10 +67,11 @@ public class ZeebeHazelcast implements AutoCloseable {
     private ZeebeHazelcast(
             Ringbuffer<byte[]> ringbuffer,
             long sequence,
-            Map<Class<?>, List<Consumer<?>>> listeners,
+            int hzBatchSize, Map<Class<?>, List<Consumer<?>>> listeners,
             Consumer<Long> postProcessListener) {
         this.ringbuffer = ringbuffer;
         this.sequence = sequence;
+        this.hzBatchSize = hzBatchSize;
         this.listeners = listeners;
         this.postProcessListener = postProcessListener;
     }
@@ -172,9 +175,8 @@ public class ZeebeHazelcast implements AutoCloseable {
     }
 
     private void readManyRecords() throws RecordParsingException {
-        int batchSize = 100;
-        LOGGER.debug("Attempting to read {} records from sequence : {}", batchSize, sequence);
-        ReadResultSet<byte[]> result = ringbuffer.readManyAsync(sequence, 1, batchSize, null)
+        LOGGER.debug("Attempting to read {} records from sequence : {}", hzBatchSize , sequence);
+        ReadResultSet<byte[]> result = ringbuffer.readManyAsync(sequence, 1, hzBatchSize, null)
                 .toCompletableFuture().join();
         LOGGER.info("Read {} records from ring buffer", result.size());
         try {
@@ -234,6 +236,8 @@ public class ZeebeHazelcast implements AutoCloseable {
 
         private String name = "zeebe";
 
+        private int hzBatchSize = 500; //default batch size
+
         private long readFromSequence = -1;
         private boolean readFromHead = false;
 
@@ -249,6 +253,11 @@ public class ZeebeHazelcast implements AutoCloseable {
          */
         public Builder name(String name) {
             this.name = name;
+            return this;
+        }
+
+        public Builder hzBatchSize(Integer hzBatchSize) {
+            this.hzBatchSize = hzBatchSize;
             return this;
         }
 
@@ -466,7 +475,7 @@ public class ZeebeHazelcast implements AutoCloseable {
             LOGGER.info("Read from ringbuffer '{}' starting from sequence '{}'", name, sequence);
 
             final var zeebeHazelcast =
-                    new ZeebeHazelcast(ringbuffer, sequence, listeners, postProcessListener);
+                    new ZeebeHazelcast(ringbuffer, sequence, hzBatchSize, listeners, postProcessListener);
             zeebeHazelcast.start();
 
             return zeebeHazelcast;
