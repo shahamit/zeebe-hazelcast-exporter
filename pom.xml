@@ -18,10 +18,10 @@
         <version.zeebe>8.2.16</version.zeebe>
         <version.exporter.protobuf>1.4.0</version.exporter.protobuf>
         <version.hazelcast>5.3.6</version.hazelcast>
-        <version.log4j>2.21.1</version.log4j>
+        <version.log4j>2.22.0</version.log4j>
         <version.zeebe.testcontainers>3.6.0</version.zeebe.testcontainers>
         <version.junit>5.10.1</version.junit>
-        <version.testcontainers>1.19.2</version.testcontainers>
+        <version.testcontainers>1.19.3</version.testcontainers>
 
         <plugin.version.maven-jar>3.3.0</plugin.version.maven-jar>
 
@@ -145,7 +145,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
-                <version>3.6.2</version>
+                <version>3.6.3</version>
                 <configuration>
                     <source>${version.java}</source>
                 </configuration>
@@ -167,7 +167,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-project-info-reports-plugin</artifactId>
-                    <version>3.4.5</version>
+                    <version>3.5.0</version>
                 </plugin>
             </plugins>
         </pluginManagement>
