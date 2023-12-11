@@ -11,6 +11,7 @@ import io.camunda.zeebe.exporter.api.Exporter;
 import io.camunda.zeebe.exporter.api.context.Context;
 import io.camunda.zeebe.exporter.api.context.Controller;
 import io.camunda.zeebe.protocol.record.Record;
+import io.camunda.zeebe.protocol.record.ValueType;
 import io.zeebe.exporter.proto.RecordTransformer;
 import io.zeebe.exporter.proto.Schema;
 import org.slf4j.Logger;
@@ -26,6 +27,8 @@ public class HazelcastExporter implements Exporter {
 
   private HazelcastInstance hazelcast;
   private Ringbuffer<byte[]> ringbuffer;
+
+  private Ringbuffer<byte[]> incidentRingbuffer;
 
   private Function<Record, byte[]> recordTransformer;
 
@@ -69,9 +72,15 @@ public class HazelcastExporter implements Exporter {
             .orElseGet(this::createHazelcastInstance);
 
     ringbuffer = hazelcast.getRingbuffer(config.getName());
+    incidentRingbuffer = hazelcast.getRingbuffer(config.getIncidentBufferName());
     if (ringbuffer == null) {
       throw new IllegalStateException(
           String.format("Failed to open ring-buffer with name '%s'", config.getName()));
+    }
+
+    if (incidentRingbuffer == null) {
+      throw new IllegalStateException(
+              String.format("Failed to open incident ring-buffer with name '%s'", config.getIncidentBufferName()));
     }
 
     logger.info(
@@ -81,6 +90,15 @@ public class HazelcastExporter implements Exporter {
         ringbuffer.tailSequence(),
         ringbuffer.size(),
         ringbuffer.capacity());
+
+    logger.info(
+            "Export incident records to ring-buffer with name '{}' [head: {}, tail: {}, size: {}, capacity: {}]",
+            incidentRingbuffer.getName(),
+            incidentRingbuffer.headSequence(),
+            incidentRingbuffer.tailSequence(),
+            incidentRingbuffer.size(),
+            incidentRingbuffer.capacity());
+
   }
 
   private HazelcastInstance createHazelcastInstance() {
@@ -151,6 +169,16 @@ public class HazelcastExporter implements Exporter {
           "Added a record to the ring-buffer [record-position: {}, ring-buffer sequence-number: {}]",
           record.getPosition(),
           sequenceNumber);
+
+      if(record.getValueType() == ValueType.INCIDENT || record.getValueType() == ValueType.VARIABLE) {
+        final var incidentSequenceNumber = incidentRingbuffer.add(transformedRecord);
+        incidentRingbuffer.add(transformedRecord);
+        logger.trace(
+                "Added a record  of type : {} to the incident ring-buffer [record-position: {}, ring-buffer sequence-number: {}]",
+                record.getValueType(),
+                record.getPosition(),
+                incidentSequenceNumber);
+      }
     }
 
     controller.updateLastExportedRecordPosition(record.getPosition());

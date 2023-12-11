@@ -12,6 +12,8 @@ public class ExporterConfiguration {
 
   private String name = "zeebe";
 
+  private String incidentBufferName = "zeebe-incidents";
+
   private int capacity = -1;
   private int timeToLiveInSeconds = 0;
 
@@ -29,6 +31,10 @@ public class ExporterConfiguration {
 
   public String getName() {
     return getEnv("NAME").orElse(name);
+  }
+
+  public String getIncidentBufferName() {
+    return incidentBufferName;
   }
 
   public int getCapacity() {
