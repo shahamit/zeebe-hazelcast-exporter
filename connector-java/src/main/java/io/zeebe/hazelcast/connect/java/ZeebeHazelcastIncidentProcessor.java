@@ -96,8 +96,12 @@ public class ZeebeHazelcastIncidentProcessor implements AutoCloseable {
     }
 
     private void readNext() {
+        readMany();
+    }
+
+    private void readOne() {
         try {
-            readMany();
+            readOneRecordFromHZ();
         } catch (InvalidProtocolBufferException e) {
             LOGGER.error("Failed to deserialize Protobuf message at sequence '{}'", sequence, e);
             sequence += 1;
@@ -129,7 +133,7 @@ public class ZeebeHazelcastIncidentProcessor implements AutoCloseable {
         }
     }
 
-    private void readOne() throws InterruptedException, InvalidProtocolBufferException {
+    private void readOneRecordFromHZ() throws InterruptedException, InvalidProtocolBufferException {
         final byte[] item = incidentRingBuffer.readOne(sequence);
         final var genericRecord = Schema.Record.parseFrom(item);
         handleRecord(genericRecord);
@@ -140,19 +144,53 @@ public class ZeebeHazelcastIncidentProcessor implements AutoCloseable {
         }
     }
 
-    private void readMany() throws InvalidProtocolBufferException {
+    private void readMany() {
         int maxCount = 500;
-        LOGGER.info("Attempting to read {} records from sequence : {}", maxCount, sequence);
+        LOGGER.debug("Attempting to read {} records from sequence : {}", maxCount, sequence);
         ReadResultSet<byte[]> result = incidentRingBuffer.readManyAsync(sequence, 1, maxCount, null)
                 .toCompletableFuture().join();
         LOGGER.info("Read {} records from incident ring buffer", result.size());
         for (byte[] item : result) {
-            final Schema.Record genericRecord;
-            genericRecord = Schema.Record.parseFrom(item);
-            handleRecord(genericRecord);
+            processRecord(item, result.size());
         }
         sequence += result.size();
         postProcessListener.accept(sequence);
+    }
+
+    private void processRecord(byte[] item, int totalRecords) {
+        try {
+            final Schema.Record genericRecord = Schema.Record.parseFrom(item);
+            handleRecord(genericRecord);
+        } catch (InvalidProtocolBufferException e) {
+            LOGGER.error("Failed to deserialize Protobuf message at sequence '{}'", sequence, e);
+            sequence += totalRecords;
+        } catch (IllegalArgumentException e) {
+            // if sequence is smaller than 0 or larger than tailSequence()+1
+            final var headSequence = incidentRingBuffer.headSequence();
+            LOGGER.warn(
+                    "Fail to read from ring-buffer at sequence '{}'. Continue with head sequence at '{}'",
+                    sequence,
+                    headSequence,
+                    e);
+
+            sequence = headSequence;
+
+        } catch (HazelcastClientNotActiveException e) {
+            LOGGER.warn("Lost connection to the Hazelcast server", e);
+
+            try {
+                close();
+            } catch (Exception closingFailure) {
+                LOGGER.debug("Failure while closing the client", closingFailure);
+            }
+
+        } catch (Exception e) {
+            if (!isClosed) {
+                LOGGER.error(
+                        "Fail to read from ring-buffer at sequence '{}'. Will try again.", sequence, e);
+            }
+        }
+
     }
 
     private void handleRecord(Schema.Record genericRecord) throws InvalidProtocolBufferException {
