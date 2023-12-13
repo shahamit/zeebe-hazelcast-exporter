@@ -12,6 +12,7 @@ import io.camunda.zeebe.exporter.api.context.Context;
 import io.camunda.zeebe.exporter.api.context.Controller;
 import io.camunda.zeebe.protocol.record.Record;
 import io.camunda.zeebe.protocol.record.ValueType;
+import io.camunda.zeebe.protocol.record.value.VariableRecordValue;
 import io.zeebe.exporter.proto.RecordTransformer;
 import io.zeebe.exporter.proto.Schema;
 import org.slf4j.Logger;
@@ -170,7 +171,7 @@ public class HazelcastExporter implements Exporter {
           record.getPosition(),
           sequenceNumber);
 
-      if(record.getValueType() == ValueType.INCIDENT || record.getValueType() == ValueType.VARIABLE) {
+      if(isIncidentRecord(record) || isUUIDVariableRecord(record)) {
         final var incidentSequenceNumber = incidentRingbuffer.add(transformedRecord);
         incidentRingbuffer.add(transformedRecord);
         logger.trace(
@@ -182,6 +183,18 @@ public class HazelcastExporter implements Exporter {
     }
 
     controller.updateLastExportedRecordPosition(record.getPosition());
+  }
+
+  private boolean isUUIDVariableRecord(Record record) {
+    if(record.getValueType() == ValueType.VARIABLE) {
+      VariableRecordValue variableRecordValue = (VariableRecordValue) record.getValue();
+        return variableRecordValue.getName().equalsIgnoreCase("uuid");
+    }
+    return false;
+  }
+
+  private boolean isIncidentRecord(Record record) {
+    return record.getValueType() == ValueType.INCIDENT;
   }
 
   private byte[] recordToProtobuf(Record record) {
